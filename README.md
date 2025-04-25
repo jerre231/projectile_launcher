@@ -11,5 +11,12 @@ Alunos:
 
 ### 2. Requirements:
 
-- Python3
-- Nix
+* [Nix](https://nixos.org/download/#nix-install-linux)
+
+
+### 3. Para rodar
+
+```bash
+# Executar environment nix
+nix-shell
+```
