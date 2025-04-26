@@ -8,8 +8,10 @@ Alunos:
 ### 1. TODO list:
 
 - [ ] Estudar aplicacao do efeito Coriolis
+- [ ] Calcular com mais precisão o coeficiente de arrasto
 
 ### 2. Requirements:
 
 - Python3
 - Nix
+- Numpy
