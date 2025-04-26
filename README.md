@@ -15,3 +15,4 @@ Alunos:
 - Python3
 - Nix
 - Numpy
+- Matplotlib
