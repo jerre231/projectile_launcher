@@ -9,13 +9,13 @@ params = {
     'rotacao': np.pi/43200,      # kg/m³ (ao nível do mar)
 }
 
-# Definir o alvo e o ângulo
-xf_objetivo = 100.0  # metros
-angulo = np.deg2rad(45)  # Convertendo graus para radianos
+# Instanciando a classe
+sim = lib.SimuladorProjetil(**params)
 
-# Encontrar velocidade inicial necessária
-v0_encontrado = lib.ajustar_velocidade(xf_objetivo, angulo, params)
+# Ajustar velocidade
+angulo_rad = np.radians(45)
+xf = 100
+v0 = sim.ajustar_velocidade(xf, angulo_rad)
 
-print(f"\nVelocidade inicial necessária: {v0_encontrado:.2f} m/s")
-
-lib.plotar_trajetoria(v0_encontrado, angulo, params)
+# Plotar a trajetória
+sim.plotar_trajetoria(v0, angulo_rad)
