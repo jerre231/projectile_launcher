@@ -90,15 +90,18 @@ class SimuladorProjetil:
         estado = self.estado_inicial
         xs = [estado[0]] # x0
         ys = [estado[1]] # y0
-        v0 = np.sqrt(xs[0]**2 + ys[0]**2)
+        v0 = np.sqrt(estado[2]**2 + estado[3]**2)
 
         while estado[1] >= 0: # enquanto y não for negativo, ou seja, para quando tocar o chão novamente
             estado = self.runge_kutta4(estado, dt)
             xs.append(estado[0])
             ys.append(estado[1])
 
+        print(v0)
+        print(self.angulo)
+
         plt.figure(figsize=(10, 6))
-        plt.plot(xs, ys, label=f"v0 = {v0:.2f} m/s, ângulo = {np.degrees(self.angulo):.1f}°")
+        plt.plot(xs, ys, label=f"v0 = {v0:.2f} m/s, ângulo = {self.angulo:.1f}°")
         plt.xlabel("Distância horizontal (m)")
         plt.ylabel("Altura (m)")
         plt.title("Trajetória do projétil com arrasto")
