@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 def calcularCoeficienteAtrito(raio):
     rho = 1.225 # densidade do ar
@@ -127,6 +128,109 @@ class SimuladorProjetil:
         plt.ylim(0, max_y * 1.1)
         plt.grid(True)
         plt.legend()
+        plt.show()
+
+    def plotar_trajetoria_animada(self, dt=0.01):
+        """
+        Simula a trajetória do projétil e cria uma animação.
+        """
+        # 1. Definir o estado inicial
+        self.velocidadeInicial() # Chama para calcular self.estado_inicial
+        estado = self.estado_inicial.copy() # Usa uma cópia para não modificar o original
+
+        xs = [estado[0]] # x0
+        ys = [estado[1]] # y0
+        tempos = [0.0]   # tempo inicial
+        
+        # 2. Pré-calcular toda a trajetória
+        max_iteracoes = 10000 # Limite para evitar loops infinitos em caso de erro
+        iter_count = 0
+
+        # Condição de parada: enquanto y for não negativo E não excedeu o limite de iterações
+        while estado[1] >= 0 and iter_count < max_iteracoes:
+            estado = self.runge_kutta4(estado, dt)
+            xs.append(estado[0])
+            ys.append(estado[1])
+            tempos.append(tempos[-1] + dt)
+            iter_count += 1
+        
+        # Ajuste final se o projétil passou do chão
+        if ys[-1] < 0:
+            # Interpolar para encontrar o ponto exato de impacto no chão
+            # Este é um refinamento, mas para o plot simples, pode-se simplesmente cortar
+            # Simplificação: Apenas remove o último ponto se ele for negativo
+            if len(xs) > 1:
+                xs.pop()
+                ys.pop()
+                tempos.pop()
+            # Adiciona o ponto de impacto no chão se necessário (linear interpolação simples)
+            # x_impacto = xs[-1] + (xs[-2] - xs[-1]) * (0 - ys[-1]) / (ys[-2] - ys[-1]) if len(xs) > 1 else xs[-1]
+            # xs[-1] = x_impacto
+            # ys[-1] = 0.0
+
+        # Calcular informações da trajetória
+        max_x = np.max(xs)
+        max_y = np.max(ys) if ys else 0
+        # Garantir que max_y não seja negativo e tenha um mínimo para o ylim
+        if max_y < 0: max_y = 0
+        if len(ys) > 1: max_y = max(ys)
+        
+        # A velocidade inicial é a calculada por velocidadeInicial()
+        v0_inicial = np.sqrt(self.estado_inicial[2]**2 + self.estado_inicial[3]**2)
+        tempo_total_voo = tempos[-1] if tempos else 0.0
+
+        # --- Configurar a figura e o eixo para a animação ---
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.set_xlim(0, max_x * 1.1)
+        ax.set_ylim(0, max_y * 1.2 if max_y > 0 else 10) # Garante um mínimo de 10m de altura se não houver altura
+
+        ax.set_xlabel("Distância horizontal (m)")
+        ax.set_ylabel("Altura (m)")
+        ax.set_title("Animação da Trajetória do Projétil")
+        ax.grid(True)
+
+        # O "trail" mostra o caminho percorrido pelo projétil
+        # Inicialmente vazio, será preenchido na animação
+        line, = ax.plot([], [], 'o-', lw=2, color='blue', label='Trajetória')
+        # O "point" é a posição atual do projétil
+        point, = ax.plot([], [], 'o', markersize=8, color='red', label='Posição Atual')
+        # Texto para exibir informações
+        info_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, verticalalignment='top') # Posição relativa
+
+        ax.legend()
+
+        # --- Função de Inicialização para o FuncAnimation ---
+        def init_animation():
+            line.set_data([], [])
+            point.set_data([], [])
+            info_text.set_text('')
+            return line, point, info_text
+
+        def animate_frame(i):
+            # CORREÇÃO AQUI: Envolver xs[i] e ys[i] em listas para 'point'
+            line.set_data(xs[:i+1], ys[:i+1])
+            point.set_data([xs[i]], [ys[i]]) # AGORA ESTÁ CORRETO
+            
+            current_x = xs[i]
+            current_y = ys[i]
+            current_time = tempos[i]
+            
+            info_text.set_text(
+                f'v0 = {v0_inicial:.2f} m/s\n'
+                f'Ângulo = {self.angulo:.1f}°\n'
+                f'Tempo de voo: {tempo_total_voo:.3f} s\n'
+                f'Alcance máximo: {max_x:.3f} m\n'
+                f'Altura máxima: {max_y:.3f} m\n'
+                f'Tempo atual: {current_time:.2f} s\n'
+                f'Posição: ({current_x:.2f}m, {current_y:.2f}m)'
+            )
+            return line, point, info_text
+
+        ani = animation.FuncAnimation(
+            fig, animate_frame, frames=len(xs), init_func=init_animation, 
+            interval=dt*1000, blit=True, repeat=False
+        )
+
         plt.show()
 
     def comparar_dt(self, dts):
