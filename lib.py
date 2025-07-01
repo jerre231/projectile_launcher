@@ -10,29 +10,27 @@ def calcularCoeficienteAtrito(raio):
 
 
 class SimuladorProjetil:
-    def __init__(self, massa, coeficiente_atrito, gravidade, rotacao, tempo_de_forca):
+    def __init__(self, **kwargs):
         """
         Inicializa o simulador com os parâmetros físicos.
         """
-        self.m = massa
-        self.k = coeficiente_atrito
-        self.g = gravidade
-        self.tF = tempo_de_forca
-        self.w = rotacao  # não usado ainda, mas incluído como atributo
+        self.m = kwargs.get("massa")
+        self.k = calcularCoeficienteAtrito(kwargs.get("raio"))
+        self.g = kwargs.get("gravidade")
+        self.tF = kwargs.get("tempo_de_forca")
+        self.w = kwargs.get("rotacao")  # não usado ainda, mas incluído como atributo
 
-        self.angulo = 0 # a ser definido pelo método velocidadeInicial
-        self.forca = 0 # a ser definido pelo método velocidadeInicial
+        self.angulo = kwargs.get("angulo")
+        self.forca = kwargs.get("forca")
         self.estado_inicial = [] # [x0, y0, vx0, vy0]
 
-    def velocidadeInicial(self, forca, angulo):
+    def velocidadeInicial(self):
         """
         Primeiro método a ser chamado, recebe os parametros iniciais e define v0.
         """
-        vx0 = (forca * self.tF * np.cos(np.radians(angulo))) / self.m
-        vy0 = (forca * self.tF * np.sin(np.radians(angulo))) / self.m
+        vx0 = (self.forca * self.tF * np.cos(np.radians(self.angulo))) / self.m
+        vy0 = (self.forca * self.tF * np.sin(np.radians(self.angulo))) / self.m
 
-        self.forca = forca
-        self.angulo = angulo
         self.estado_inicial = [0, 0, vx0, vy0]
 
         return self.estado_inicial
@@ -95,6 +93,7 @@ class SimuladorProjetil:
         """
         Simula e plota a trajetória do projétil.
         """
+        self.velocidadeInicial()
         estado = self.estado_inicial
         xs = [estado[0]] # x0
         ys = [estado[1]] # y0
