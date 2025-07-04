@@ -17,7 +17,7 @@ def run_simulation(params):
     # Instanciando a classe
     sim = lib.SimuladorProjetil(**params)
     #sim.plotar_trajetoria()
-    sim.plotar_trajetoria_animada()
+    sim.plotar_trajetoria_animada_comparada()
 
     # TODO: quebra entre 340k e 350k Newtons de forca, porque?
 

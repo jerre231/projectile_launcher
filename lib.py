@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from scipy.integrate import solve_ivp
+from scipy.interpolate import interp1d
 
 def calcularCoeficienteAtrito(raio):
     rho = 1.225 # densidade do ar
@@ -20,6 +22,7 @@ class SimuladorProjetil:
         self.g = kwargs.get("gravidade")
         self.tF = kwargs.get("tempo_de_forca")
         self.w = kwargs.get("rotacao")  # não usado ainda, mas incluído como atributo
+        self.dt = kwargs.get("dt")
 
         self.angulo = kwargs.get("angulo")
         self.forca = kwargs.get("forca")
@@ -90,11 +93,12 @@ class SimuladorProjetil:
         print("Aviso: número máximo de iterações atingido.")
         return (vmin + vmax) / 2
 
-    def plotar_trajetoria(self, dt=0.01):
+    def plotar_trajetoria(self):
         """
         Simula e plota a trajetória do projétil.
         """
         self.velocidadeInicial()
+        dt = self.dt
         estado = self.estado_inicial
         xs = [estado[0]] # x0
         ys = [estado[1]] # y0
@@ -313,4 +317,178 @@ class SimuladorProjetil:
         plt.grid(True)
         plt.legend()
         plt.show()
+    
+    def rk45(self, t_max=5, num_pontos=3000):
+        t_span = (0, t_max)
+        t_eval = np.linspace(0, t_max, num_pontos)
 
+        def sistema(t, estado):
+            return self.EDOs(estado)
+        
+        sol = solve_ivp(sistema, t_span, self.estado_inicial, t_eval=t_eval, method='RK45')
+
+        x = sol.y[0]
+        y = sol.y[1]
+
+        return x, y
+    
+    def plotar_trajetoria_animada_comparada(self, t_max=10, num_pontos_scipy=1000):
+        """
+        Anima a trajetória do projétil usando RK4 manual e plota a trajetória obtida com solve_ivp (RK45) ao final.
+        Exibe também os erros ao final da animação.
+        """
+
+        # --- Parte 1: Simulação com Runge-Kutta 4 manual ---
+        self.velocidadeInicial()
+        dt = self.dt
+        estado = self.estado_inicial.copy()
+
+        xs = [estado[0]]
+        ys = [estado[1]]
+        tempos = [0.0]
+
+        max_iteracoes = 10000
+        iter_count = 0
+
+        while estado[1] >= 0 and iter_count < max_iteracoes:
+            estado = self.runge_kutta4(estado, dt)
+            xs.append(estado[0])
+            ys.append(estado[1])
+            tempos.append(tempos[-1] + dt)
+            iter_count += 1
+
+        if ys[-1] < 0:
+            xs.pop()
+            ys.pop()
+            tempos.pop()
+
+        xs = np.array(xs)
+        ys = np.array(ys)
+        tempos = np.array(tempos)
+
+        max_x = np.max(xs)
+        max_y = np.max(ys) if ys.size > 0 else 0
+        if max_y < 0: max_y = 0
+
+        v0_inicial = np.sqrt(self.estado_inicial[2]**2 + self.estado_inicial[3]**2)
+        tempo_total_voo = tempos[-1] if tempos.size > 0 else 0.0
+
+        # --- Parte 2: Solução com solve_ivp (RK45) ---
+        def sistema(t, estado):
+            return self.EDOs(estado)
+
+        t_eval = np.linspace(0, t_max, num_pontos_scipy)
+        sol = solve_ivp(sistema, [0, t_max], self.estado_inicial.copy(), t_eval=t_eval, method='RK45')
+
+        xs_scipy = sol.y[0]
+        ys_scipy = sol.y[1]
+        tempos_scipy = sol.t
+
+        idx_queda = np.where(ys_scipy < 0)[0]
+        if len(idx_queda) > 0:
+            idx_fim = idx_queda[0]
+            xs_scipy = xs_scipy[:idx_fim]
+            ys_scipy = ys_scipy[:idx_fim]
+            tempos_scipy = tempos_scipy[:idx_fim]
+
+        # --- Parte 3: Calcular os erros ---
+        interp_x = interp1d(tempos_scipy, xs_scipy, kind='linear', fill_value="extrapolate")
+        interp_y = interp1d(tempos_scipy, ys_scipy, kind='linear', fill_value="extrapolate")
+
+        xs_ref = interp_x(tempos)
+        ys_ref = interp_y(tempos)
+
+        erro_x = np.abs(xs - xs_ref)
+        erro_y = np.abs(ys - ys_ref)
+        erro_total = np.sqrt(erro_x**2 + erro_y**2)
+
+        erro_max = np.max(erro_total)
+        erro_medio = np.mean(erro_total)
+        erro_rms = np.sqrt(np.mean(erro_total**2))
+
+        # --- Parte 4: Animação ---
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.set_xlim(0, max(max_x, np.max(xs_scipy)) * 1.1)
+        ax.set_ylim(0, max(max_y, np.max(ys_scipy)) * 1.2)
+        ax.set_xlabel("Distância horizontal (m)")
+        ax.set_ylabel("Altura (m)")
+        ax.set_title("Animação da Trajetória do Projétil")
+        ax.grid(True)
+
+        line, = ax.plot([], [], 'o-', lw=2, color='blue', label='Trajetória (RK4 manual)')
+        point, = ax.plot([], [], 'o', markersize=8, color='red', label='Posição Atual')
+        rk45_line, = ax.plot([], [], '--', color='green', lw=2, label='Solução RK45 (solve_ivp)')
+        info_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, verticalalignment='top', fontsize=10)
+        ax.legend()
+
+        def init_animation():
+            line.set_data([], [])
+            point.set_data([], [])
+            rk45_line.set_data([], [])
+            info_text.set_text('')
+            return line, point, info_text, rk45_line
+
+        def animate_frame(i):
+            line.set_data(xs[:i+1], ys[:i+1])
+            point.set_data([xs[i]], [ys[i]])
+            current_x = xs[i]
+            current_y = ys[i]
+            current_time = tempos[i]
+
+            texto = (
+                f'v0 = {v0_inicial:.2f} m/s\n'
+                f'Ângulo = {self.angulo:.1f}°\n'
+                f'Tempo de voo (RK4): {tempo_total_voo:.3f} s\n'
+                f'Alcance máximo (RK4): {max_x:.3f} m\n'
+                f'Altura máxima (RK4): {max_y:.3f} m\n'
+                f'Tempo atual: {current_time:.2f} s\n'
+                f'Posição: ({current_x:.2f}m, {current_y:.2f}m)'
+            )
+
+            # Se for o último frame, adiciona os erros
+            if i == len(xs) - 1:
+                rk45_line.set_data(xs_scipy, ys_scipy)
+                texto += (
+                    f'\n\nErro máximo: {erro_max:.4e} m\n'
+                    f'Erro médio: {erro_medio:.4e} m\n'
+                    f'Erro RMS: {erro_rms:.4e} m'
+                )
+
+            info_text.set_text(texto)
+            return line, point, info_text, rk45_line
+
+        ani = animation.FuncAnimation(
+            fig, animate_frame, frames=len(xs), init_func=init_animation,
+            interval=dt * 1000, blit=True, repeat=False
+        )
+
+        plt.show()
+
+    def calcular_erros(xs_manual, ys_manual, tempos_manual, xs_scipy, ys_scipy, tempos_scipy):
+        """
+        Calcula erros entre a solução RK4 manual e a solução de referência RK45 (solve_ivp).
+        """
+        # Interpola a solução de referência (solve_ivp) nos tempos do RK4 manual
+        interp_x = interp1d(tempos_scipy, xs_scipy, kind='linear', fill_value="extrapolate")
+        interp_y = interp1d(tempos_scipy, ys_scipy, kind='linear', fill_value="extrapolate")
+
+        xs_ref = interp_x(tempos_manual)
+        ys_ref = interp_y(tempos_manual)
+
+        erro_x = np.abs(xs_manual - xs_ref)
+        erro_y = np.abs(ys_manual - ys_ref)
+
+        erro_total = np.sqrt(erro_x**2 + erro_y**2)
+
+        # Cálculo de métricas
+        erro_max = np.max(erro_total)
+        erro_medio = np.mean(erro_total)
+        erro_rms = np.sqrt(np.mean(erro_total**2))
+        erro_relativo = erro_total / (np.linalg.norm([xs_ref, ys_ref], axis=0) + 1e-12)
+
+        return {
+            'erro_max': erro_max,
+            'erro_medio': erro_medio,
+            'erro_rms': erro_rms,
+            'erro_relativo_medio': np.mean(erro_relativo)
+    }
