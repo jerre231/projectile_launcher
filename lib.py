@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from scipy.integrate import solve_ivp
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, CubicSpline
 
 def calcularCoeficienteAtrito(raio):
     rho = 1.225 # densidade do ar
@@ -418,15 +418,23 @@ class SimuladorProjetil:
         line, = ax.plot([], [], 'o-', lw=2, color='blue', label='Trajetória (RK4 manual)')
         point, = ax.plot([], [], 'o', markersize=8, color='red', label='Posição Atual')
         rk45_line, = ax.plot([], [], '--', color='green', lw=2, label='Solução RK45 (solve_ivp)')
+        spline_line, = ax.plot([], [], '-', color='darkred', lw=2, label='Spline RK4')
         info_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, verticalalignment='top', fontsize=10)
         ax.legend()
+
+        # --- Gerar spline da RK4 ---
+        spline_x_rk4, spline_y_rk4 = self.gerar_spline(tempos, xs, ys)
+        t_suave = np.linspace(tempos[0], tempos[-1], 1000)
+        xs_suave = spline_x_rk4(t_suave)
+        ys_suave = spline_y_rk4(t_suave)
 
         def init_animation():
             line.set_data([], [])
             point.set_data([], [])
             rk45_line.set_data([], [])
+            spline_line.set_data([], [])
             info_text.set_text('')
-            return line, point, info_text, rk45_line
+            return line, point, info_text, rk45_line, spline_line
 
         def animate_frame(i):
             line.set_data(xs[:i+1], ys[:i+1])
@@ -445,9 +453,9 @@ class SimuladorProjetil:
                 f'Posição: ({current_x:.2f}m, {current_y:.2f}m)'
             )
 
-            # Se for o último frame, adiciona os erros
             if i == len(xs) - 1:
                 rk45_line.set_data(xs_scipy, ys_scipy)
+                spline_line.set_data(xs_suave, ys_suave)
                 texto += (
                     f'\n\nErro máximo: {erro_max:.4e} m\n'
                     f'Erro médio: {erro_medio:.4e} m\n'
@@ -455,7 +463,7 @@ class SimuladorProjetil:
                 )
 
             info_text.set_text(texto)
-            return line, point, info_text, rk45_line
+            return line, point, info_text, rk45_line, spline_line
 
         ani = animation.FuncAnimation(
             fig, animate_frame, frames=len(xs), init_func=init_animation,
@@ -464,31 +472,40 @@ class SimuladorProjetil:
 
         plt.show()
 
-    def calcular_erros(xs_manual, ys_manual, tempos_manual, xs_scipy, ys_scipy, tempos_scipy):
+    def calcular_erros(xs_rk4, ys_rk4, tempos_rk4, xs_rk45, ys_rk45, tempos_rk45):
         """
         Calcula erros entre a solução RK4 manual e a solução de referência RK45 (solve_ivp).
         """
-        # Interpola a solução de referência (solve_ivp) nos tempos do RK4 manual
-        interp_x = interp1d(tempos_scipy, xs_scipy, kind='linear', fill_value="extrapolate")
-        interp_y = interp1d(tempos_scipy, ys_scipy, kind='linear', fill_value="extrapolate")
+        # Spline cúbica da sua RK4 manual
+        spline_x_rk4 = CubicSpline(tempos_rk4, xs_rk4)
+        spline_y_rk4 = CubicSpline(tempos_rk4, ys_rk4)
 
-        xs_ref = interp_x(tempos_manual)
-        ys_ref = interp_y(tempos_manual)
+        # Interpola a RK4 nos tempos da referência
+        xs_interp = spline_x_rk4(tempos_rk45)
+        ys_interp = spline_y_rk4(tempos_rk45)
 
-        erro_x = np.abs(xs_manual - xs_ref)
-        erro_y = np.abs(ys_manual - ys_ref)
-
+        # Erros ponto a ponto
+        erro_x = np.abs(xs_interp - xs_rk45)
+        erro_y = np.abs(ys_interp - ys_rk45)
         erro_total = np.sqrt(erro_x**2 + erro_y**2)
 
-        # Cálculo de métricas
+        # Métricas
         erro_max = np.max(erro_total)
         erro_medio = np.mean(erro_total)
         erro_rms = np.sqrt(np.mean(erro_total**2))
-        erro_relativo = erro_total / (np.linalg.norm([xs_ref, ys_ref], axis=0) + 1e-12)
 
         return {
             'erro_max': erro_max,
             'erro_medio': erro_medio,
             'erro_rms': erro_rms,
-            'erro_relativo_medio': np.mean(erro_relativo)
-    }
+            'erro_total': erro_total,  # útil se quiser plotar ao longo do tempo
+            'tempos': tempos_rk45
+        }
+    def gerar_spline(self, tempos, xs, ys):
+        """
+        Gera splines cúbicas para interpolar a trajetória do projétil.
+        Retorna duas funções spline_x(t) e spline_y(t).
+        """
+        spline_x = CubicSpline(tempos, xs)
+        spline_y = CubicSpline(tempos, ys)
+        return spline_x, spline_y
