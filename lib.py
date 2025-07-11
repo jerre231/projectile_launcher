@@ -59,6 +59,18 @@ class SimuladorProjetil:
         dvydt = (-Fd_y / self.m) - self.g
 
         return np.array([dxdt, dydt, dvxdt, dvydt])
+    
+    def runge_kutta4_generico(self, f, estado, dt):
+        """
+        Executa um passo de Runge-Kutta 4ª ordem para uma função f(estado).
+        """
+        k1 = f(estado)
+        k2 = f(estado + 0.5 * dt * k1)
+        k3 = f(estado + 0.5 * dt * k2)
+        k4 = f(estado + dt * k3)
+
+        return estado + (dt / 6) * (k1 + 2*k2 + 2*k3 + k4)
+
 
     def runge_kutta4(self, estado, dt):
         """
@@ -509,14 +521,15 @@ class SimuladorProjetil:
         spline_x = CubicSpline(tempos, xs)
         spline_y = CubicSpline(tempos, ys)
         return spline_x, spline_y
-    def comparar_metodos(self, t_max=10, num_pontos_scipy=1000):
+    def comparar_metodos(self, t_max=10, num_pontos_scipy=1000, latitude_graus=-22.9):
         """
         Compara a trajetória do projétil resolvida com os métodos:
         - Euler
         - Runge-Kutta 4 (manual)
         - RK45 (solve_ivp - referência)
         
-        Plota as trajetórias e exibe os erros dos métodos numéricos em relação à solução de referência.
+        Plota as trajetórias e exibe os erros dos métodos numéricos em relação à solução de referência dentro do gráfico,
+        além de calcular o desvio lateral causado pela força de Coriolis.
         """
         self.velocidadeInicial()
         dt = self.dt
@@ -552,7 +565,6 @@ class SimuladorProjetil:
 
         xs_ref, ys_ref, tempos_ref = sol.y[0], sol.y[1], sol.t
 
-        # Limita solução de referência até tocar o solo
         idx_queda = np.where(ys_ref < 0)[0]
         if len(idx_queda) > 0:
             idx_fim = idx_queda[0]
@@ -561,8 +573,8 @@ class SimuladorProjetil:
             tempos_ref = tempos_ref[:idx_fim]
 
         # --- Interpolação para comparação de erros ---
-        interp_x_ref = CubicSpline(tempos_ref, xs_ref)
-        interp_y_ref = CubicSpline(tempos_ref, ys_ref)
+        interp_x_ref = interp1d(tempos_ref, xs_ref, kind='linear', fill_value="extrapolate")
+        interp_y_ref = interp1d(tempos_ref, ys_ref, kind='linear', fill_value="extrapolate")
 
         def calcular_erros(tempos, xs, ys):
             xs_interp = interp_x_ref(tempos)
@@ -577,7 +589,11 @@ class SimuladorProjetil:
         erros_euler = calcular_erros(np.array(tempos_euler), np.array(xs_euler), np.array(ys_euler))
         erros_rk4   = calcular_erros(np.array(tempos_rk4), np.array(xs_rk4), np.array(ys_rk4))
 
-        plt.figure(figsize=(10, 6))
+        # --- Cálculo do desvio de Coriolis ---
+        desvio_coriolis = self.calcular_desvio_final_coriolis(latitude_graus)
+
+        # --- Plot ---
+        plt.figure(figsize=(11, 6))
         plt.plot(xs_ref, ys_ref, '--', label='RK45 (solve_ivp)', color='green')
         plt.plot(xs_rk4, ys_rk4, '-', label='RK4 (manual)', color='blue')
         plt.plot(xs_euler, ys_euler, '-', label='Euler', color='orange')
@@ -587,7 +603,8 @@ class SimuladorProjetil:
         plt.legend()
         plt.grid(True)
 
-        texto_erro = (
+        # --- Texto de erro e desvio de Coriolis no gráfico ---
+        texto_info = (
             "Erros em relação ao RK45 (solve_ivp):\n\n"
             "Método de Euler:\n"
             f"  Erro máximo: {erros_euler['erro_max']:.4e} m\n"
@@ -596,23 +613,69 @@ class SimuladorProjetil:
             "Método de RK4 manual:\n"
             f"  Erro máximo: {erros_rk4['erro_max']:.4e} m\n"
             f"  Erro médio:  {erros_rk4['erro_medio']:.4e} m\n"
-            f"  Erro RMS:    {erros_rk4['erro_rms']:.4e} m"
+            f"  Erro RMS:    {erros_rk4['erro_rms']:.4e} m\n\n"
+            f"Desvio lateral por Coriolis (latitude {latitude_graus}°):\n"
+            f"  z_final = {desvio_coriolis:.3f} m"
         )
 
-        plt.text(1.02, 0.5, texto_erro, transform=plt.gca().transAxes,
+        plt.text(1.02, 0.5, texto_info, transform=plt.gca().transAxes,
                 fontsize=10, verticalalignment='center', family='monospace')
 
         plt.tight_layout()
-
         plt.show()
 
-        print("Erros em relação ao RK45 (solve_ivp):\n")
-        print("Método de Euler:")
-        print(f"  Erro máximo: {erros_euler['erro_max']:.4e} m")
-        print(f"  Erro médio:  {erros_euler['erro_medio']:.4e} m")
-        print(f"  Erro RMS:    {erros_euler['erro_rms']:.4e} m\n")
 
-        print("Método de RK4 manual:")
-        print(f"  Erro máximo: {erros_rk4['erro_max']:.4e} m")
-        print(f"  Erro médio:  {erros_rk4['erro_medio']:.4e} m")
-        print(f"  Erro RMS:    {erros_rk4['erro_rms']:.4e} m")
+    def EDOs_com_coriolis(self, estado, latitude_graus):
+        """
+        Retorna as derivadas no sistema com efeito de Coriolis.
+        Estado: [x, y, z, vx, vy, vz]
+        """
+        x, y, z, vx, vy, vz = estado
+        v = np.array([vx, vy, vz])
+        
+        # Constantes
+        g = self.g
+        omega = self.w  # rad/s
+        phi = np.radians(latitude_graus)
+        
+        # Vetor de rotação da Terra (depende da latitude)
+        # No referencial local: x (leste), y (vertical), z (norte)
+        Omega = omega * np.array([0, np.cos(phi), np.sin(phi)])  # vetor de rotação da Terra
+
+        # Força de Coriolis
+        a_coriolis = -2 * np.cross(Omega, v)
+
+        # Força de arrasto não linear (se quiser incluir)
+        norm_v = np.linalg.norm(v)
+        a_drag = - (self.k * norm_v * v) / self.m
+
+        # Aceleração total
+        a_total = np.array([0, -g, 0]) + a_coriolis + a_drag
+
+        return np.concatenate([v, a_total])
+    def calcular_desvio_final_coriolis(self, latitude_graus=0):
+        """
+        Usa Runge-Kutta 4 genérico para integrar com Coriolis em 3D.
+        Retorna o desvio lateral (z) ao final da trajetória.
+        """
+        self.velocidadeInicial()
+        
+        v0x = self.estado_inicial[2]
+        v0y = self.estado_inicial[3]
+        estado = np.array([0.0, 0.0, 0.0, v0x, v0y, 0.0])  # [x, y, z, vx, vy, vz]
+        dt = self.dt
+
+        posicoes = [estado[:3]]
+        max_iter = 10000
+        iter_count = 0
+
+        f = lambda s: self.EDOs_com_coriolis(s, latitude_graus)
+
+        while estado[1] >= 0 and iter_count < max_iter:
+            estado = self.runge_kutta4_generico(f, estado, dt)
+            posicoes.append(estado[:3])
+            iter_count += 1
+
+        posicoes = np.array(posicoes)
+        return posicoes[-1, 2]  # z final
+    
