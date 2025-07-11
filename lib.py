@@ -509,3 +509,110 @@ class SimuladorProjetil:
         spline_x = CubicSpline(tempos, xs)
         spline_y = CubicSpline(tempos, ys)
         return spline_x, spline_y
+    def comparar_metodos(self, t_max=10, num_pontos_scipy=1000):
+        """
+        Compara a trajetória do projétil resolvida com os métodos:
+        - Euler
+        - Runge-Kutta 4 (manual)
+        - RK45 (solve_ivp - referência)
+        
+        Plota as trajetórias e exibe os erros dos métodos numéricos em relação à solução de referência.
+        """
+        self.velocidadeInicial()
+        dt = self.dt
+        estado_inicial = self.estado_inicial.copy()
+
+        # --- Euler ---
+        estado_euler = estado_inicial.copy()
+        xs_euler, ys_euler, tempos_euler = [estado_euler[0]], [estado_euler[1]], [0.0]
+
+        while estado_euler[1] >= 0 and tempos_euler[-1] <= t_max:
+            derivadas = self.EDOs(estado_euler)
+            estado_euler = estado_euler + dt * np.array(derivadas)
+            xs_euler.append(estado_euler[0])
+            ys_euler.append(estado_euler[1])
+            tempos_euler.append(tempos_euler[-1] + dt)
+
+        # --- RK4 manual ---
+        estado_rk4 = estado_inicial.copy()
+        xs_rk4, ys_rk4, tempos_rk4 = [estado_rk4[0]], [estado_rk4[1]], [0.0]
+
+        while estado_rk4[1] >= 0 and tempos_rk4[-1] <= t_max:
+            estado_rk4 = self.runge_kutta4(estado_rk4, dt)
+            xs_rk4.append(estado_rk4[0])
+            ys_rk4.append(estado_rk4[1])
+            tempos_rk4.append(tempos_rk4[-1] + dt)
+
+        # --- Solução de referência (RK45 com solve_ivp) ---
+        def sistema(t, estado):
+            return self.EDOs(estado)
+
+        t_eval = np.linspace(0, t_max, num_pontos_scipy)
+        sol = solve_ivp(sistema, [0, t_max], estado_inicial.copy(), t_eval=t_eval, method='RK45')
+
+        xs_ref, ys_ref, tempos_ref = sol.y[0], sol.y[1], sol.t
+
+        # Limita solução de referência até tocar o solo
+        idx_queda = np.where(ys_ref < 0)[0]
+        if len(idx_queda) > 0:
+            idx_fim = idx_queda[0]
+            xs_ref = xs_ref[:idx_fim]
+            ys_ref = ys_ref[:idx_fim]
+            tempos_ref = tempos_ref[:idx_fim]
+
+        # --- Interpolação para comparação de erros ---
+        interp_x_ref = CubicSpline(tempos_ref, xs_ref)
+        interp_y_ref = CubicSpline(tempos_ref, ys_ref)
+
+        def calcular_erros(tempos, xs, ys):
+            xs_interp = interp_x_ref(tempos)
+            ys_interp = interp_y_ref(tempos)
+            erro = np.sqrt((xs - xs_interp)**2 + (ys - ys_interp)**2)
+            return {
+                'erro_max': np.max(erro),
+                'erro_medio': np.mean(erro),
+                'erro_rms': np.sqrt(np.mean(erro**2))
+            }
+
+        erros_euler = calcular_erros(np.array(tempos_euler), np.array(xs_euler), np.array(ys_euler))
+        erros_rk4   = calcular_erros(np.array(tempos_rk4), np.array(xs_rk4), np.array(ys_rk4))
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(xs_ref, ys_ref, '--', label='RK45 (solve_ivp)', color='green')
+        plt.plot(xs_rk4, ys_rk4, '-', label='RK4 (manual)', color='blue')
+        plt.plot(xs_euler, ys_euler, '-', label='Euler', color='orange')
+        plt.xlabel("Distância horizontal (m)")
+        plt.ylabel("Altura (m)")
+        plt.title("Comparação dos Métodos Numéricos para a Trajetória do Projétil")
+        plt.legend()
+        plt.grid(True)
+
+        texto_erro = (
+            "Erros em relação ao RK45 (solve_ivp):\n\n"
+            "Método de Euler:\n"
+            f"  Erro máximo: {erros_euler['erro_max']:.4e} m\n"
+            f"  Erro médio:  {erros_euler['erro_medio']:.4e} m\n"
+            f"  Erro RMS:    {erros_euler['erro_rms']:.4e} m\n\n"
+            "Método de RK4 manual:\n"
+            f"  Erro máximo: {erros_rk4['erro_max']:.4e} m\n"
+            f"  Erro médio:  {erros_rk4['erro_medio']:.4e} m\n"
+            f"  Erro RMS:    {erros_rk4['erro_rms']:.4e} m"
+        )
+
+        plt.text(1.02, 0.5, texto_erro, transform=plt.gca().transAxes,
+                fontsize=10, verticalalignment='center', family='monospace')
+
+        plt.tight_layout()
+
+        plt.show()
+
+        print("Erros em relação ao RK45 (solve_ivp):\n")
+        print("Método de Euler:")
+        print(f"  Erro máximo: {erros_euler['erro_max']:.4e} m")
+        print(f"  Erro médio:  {erros_euler['erro_medio']:.4e} m")
+        print(f"  Erro RMS:    {erros_euler['erro_rms']:.4e} m\n")
+
+        print("Método de RK4 manual:")
+        print(f"  Erro máximo: {erros_rk4['erro_max']:.4e} m")
+        print(f"  Erro médio:  {erros_rk4['erro_medio']:.4e} m")
+        print(f"  Erro RMS:    {erros_rk4['erro_rms']:.4e} m")
