@@ -9,19 +9,6 @@ def run_simulation(params):
     #sim.plotar_trajetoria_animada_comparada()
     sim.comparar_metodos()
 
-def sim_comparison(params):
-    sim = lib.SimuladorProjetil(**params)
-
-    # Testando configuracoes
-    configuracoes = [
-    {'forca': 10000, 'angulo': 45, 'dt': 0.3},
-    {'forca': 10000, 'angulo': 45, 'dt': 0.2},
-    {'forca': 10000, 'angulo': 45, 'dt': 0.01},
-    {'forca': 10000, 'angulo': 45, 'dt': 0.001}]
-
-    sim.comparar_configuracoes(configuracoes)
-    return True
-
 if __name__ == "__main__":
     if gui.parameter_collect():
         collected_params = gui.params
