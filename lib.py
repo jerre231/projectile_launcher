@@ -337,7 +337,8 @@ class SimuladorProjetil:
         def sistema(t, estado):
             return self.EDOs(estado)
         
-        sol = solve_ivp(sistema, t_span, self.estado_inicial, t_eval=t_eval, method='RK45')
+        dt_max = 1/self.velocidadeInicial
+        sol = solve_ivp(sistema, t_span, self.estado_inicial, t_eval=t_eval, method='RK45', max_step=dt_max)
 
         x = sol.y[0]
         y = sol.y[1]
@@ -555,13 +556,16 @@ class SimuladorProjetil:
             xs_rk4.append(estado_rk4[0])
             ys_rk4.append(estado_rk4[1])
             tempos_rk4.append(tempos_rk4[-1] + dt)
-
+        
         # --- Solução de referência (RK45 com solve_ivp) ---
         def sistema(t, estado):
             return self.EDOs(estado)
 
+        v0 = np.sqrt(self.estado_inicial[2]**2 + self.estado_inicial[3]**2)
+        dt_max = 1/v0
+
         t_eval = np.linspace(0, t_max, num_pontos_scipy)
-        sol = solve_ivp(sistema, [0, t_max], estado_inicial.copy(), t_eval=t_eval, method='RK45')
+        sol = solve_ivp(sistema, [0, t_max], estado_inicial.copy(), t_eval=t_eval, method='RK45', max_step=dt_max)
 
         xs_ref, ys_ref, tempos_ref = sol.y[0], sol.y[1], sol.t
 
