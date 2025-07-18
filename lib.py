@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d, CubicSpline
+import time
 
 def calcularCoeficienteAtrito(raio):
     rho = 1.225 # densidade do ar
@@ -540,23 +541,29 @@ class SimuladorProjetil:
         estado_euler = estado_inicial.copy()
         xs_euler, ys_euler, tempos_euler = [estado_euler[0]], [estado_euler[1]], [0.0]
 
+        timestart_euler = time.time()
         while estado_euler[1] >= 0 and tempos_euler[-1] <= t_max:
             derivadas = self.EDOs(estado_euler)
             estado_euler = estado_euler + dt * np.array(derivadas)
             xs_euler.append(estado_euler[0])
             ys_euler.append(estado_euler[1])
             tempos_euler.append(tempos_euler[-1] + dt)
+        timeend_euler = time.time()
+        time_euler = timeend_euler - timestart_euler
 
         # --- RK4 manual ---
         estado_rk4 = estado_inicial.copy()
         xs_rk4, ys_rk4, tempos_rk4 = [estado_rk4[0]], [estado_rk4[1]], [0.0]
 
+        timestart_rk4 = time.time()
         while estado_rk4[1] >= 0 and tempos_rk4[-1] <= t_max:
             estado_rk4 = self.runge_kutta4(estado_rk4, dt)
             xs_rk4.append(estado_rk4[0])
             ys_rk4.append(estado_rk4[1])
             tempos_rk4.append(tempos_rk4[-1] + dt)
-        
+        timeend_rk4 = time.time()
+        time_rk4 = timeend_rk4 - timestart_rk4
+
         # --- Solução de referência (RK45 com solve_ivp) ---
         def sistema(t, estado):
             return self.EDOs(estado)
@@ -565,7 +572,11 @@ class SimuladorProjetil:
         dt_max = 1/v0
 
         t_eval = np.linspace(0, t_max, num_pontos_scipy)
+
+        timestart_rk45 = time.time()
         sol = solve_ivp(sistema, [0, t_max], estado_inicial.copy(), t_eval=t_eval, method='RK45', max_step=dt_max)
+        timeend_rk45 = time.time()
+        time_rk45 = timeend_rk45 - timestart_rk45
 
         xs_ref, ys_ref, tempos_ref = sol.y[0], sol.y[1], sol.t
 
@@ -614,10 +625,12 @@ class SimuladorProjetil:
             f"  Erro máximo: {erros_euler['erro_max']:.4e} m\n"
             f"  Erro médio:  {erros_euler['erro_medio']:.4e} m\n"
             f"  Erro RMS:    {erros_euler['erro_rms']:.4e} m\n\n"
+            f"  Runtime:    {time_euler:.4f} s\n\n"
             "Método de RK4 manual:\n"
             f"  Erro máximo: {erros_rk4['erro_max']:.4e} m\n"
             f"  Erro médio:  {erros_rk4['erro_medio']:.4e} m\n"
             f"  Erro RMS:    {erros_rk4['erro_rms']:.4e} m\n\n"
+            f"  Runtime:    {time_rk4:.4f} s\n\n"
             f"Desvio lateral por Coriolis (latitude {latitude_graus}°):\n"
             f"  z_final = {desvio_coriolis:.3f} m"
         )
